@@ -35,7 +35,7 @@ static void handle_sum_call(struct mg_connection *nc, struct http_message *hm) {
 
   /* Compute the result and send it back as a JSON object */
   result = strtod(n1, NULL) + strtod(n2, NULL);
-  mg_printf_http_chunk(nc, "{ \"result\": %lf }", result);
+  mg_printf_http_chunk(nc, "{ \"result\": \" %lf \" }", result);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
@@ -49,7 +49,7 @@ static void hello_world(struct mg_connection *nc, struct http_message *hm) {
   /* Send headers */
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
   result = 2 + 3;
-  mg_printf_http_chunk(nc, "{ \"result\": %lf }", result);
+  mg_printf_http_chunk(nc, "{ \"result\": \" %lf \" }", result);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
@@ -78,7 +78,8 @@ void base64_encode(const unsigned char *src, int src_len, char *dst) {
   dst[j++] = '\0';
 }
 
-unsigned long long timeout_ms;
+unsigned int jpeg_count = 0;
+//unsigned long long timeout_ms;
 int save_to_file(const char *data, const int data_len) {
     char *data_buf = (char *)malloc(data_len);
     if(NULL == data_buf) {
@@ -89,9 +90,8 @@ int save_to_file(const char *data, const int data_len) {
     mg_base64_decode((const unsigned char *)data, data_len, data_buf);
     struct timeval tmp;
     gettimeofday(&tmp, NULL);
-    timeout_ms = tmp.tv_sec * 1000*1000+tmp.tv_usec;
     char file_name[64] = {0};
-    snprintf(file_name, sizeof(file_name), "%llu.jpg", timeout_ms);
+    snprintf(file_name, sizeof(file_name), "%u.jpg", jpeg_count ++);
     FILE *fp = fopen(file_name, "wb");
     if(NULL == fp) {
         printf("file open failed\n");
@@ -114,7 +114,7 @@ static void get_snap_face(struct mg_connection *nc, struct http_message *hm) {
       //printf("data-buf malloc failed\n");
       /* base64_decode*/
   save_to_file(hm->body.p, hm->body.len);
-  mg_printf_http_chunk(nc, "{ \"result\": %s }", "ok");
+  mg_printf_http_chunk(nc, "{\"code\":200,\"data\":\"null\",\"message\":\"false\"}");
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 
 }
