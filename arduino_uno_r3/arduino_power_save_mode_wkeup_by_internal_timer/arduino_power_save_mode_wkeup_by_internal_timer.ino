@@ -105,7 +105,7 @@ void setup()
   /* Configure the prescaler for 1:1024, giving us a
      timeout of 4.09 seconds.
   */
-  TCCR1B = 0x05;
+  TCCR1B = 0x06;
 
   /* Enable the timer overlow interrupt. */
   TIMSK1 = 0x01;
@@ -159,7 +159,7 @@ void loop()
     if (soil_moisture_value >= 900) { //表示土壤太干,需要浇水
       digitalWrite(PUMP_SWITCH, HIGH);
       digitalWrite(LED_PIN, HIGH);
-      delay(1000 * 2); //睡眠5秒
+      delay(1000 * 2); //睡眠2秒
       digitalWrite(PUMP_SWITCH, LOW);
     }
     digitalWrite(LED_PIN, LOW);
