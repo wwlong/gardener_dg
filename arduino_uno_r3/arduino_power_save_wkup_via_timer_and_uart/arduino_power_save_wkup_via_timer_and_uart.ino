@@ -1,8 +1,4 @@
-/*
-   Sketch for testing sleep mode with wake up on WDT.
-   Donal Morrissey - 2011.
-
-*/
+//在此基础上增加WTD唤醒
 #include <avr/sleep.h>
 #include <avr/power.h>
 #include <avr/wdt.h>
@@ -11,8 +7,14 @@
 #define SOIL_MOISTURE (A1)
 #define PUMP_SWITCH (A2)
 volatile int f_wdt = 1;
+const byte AWAKE_LED = 8;
+const byte GREEN_LED = 9;
+const unsigned long WAIT_TIME = 5000;
 
-
+ISR (PCINT2_vect)
+{
+  // handle pin change interrupt for D0 to D7 here
+}  // end of PCINT2_vect
 
 /***************************************************
     Name:        ISR(WDT_vect)
@@ -33,59 +35,20 @@ ISR(WDT_vect)
   }
   else
   {
-    Serial.println("WDT Overrun!!!");
+    //Serial.println("WDT Overrun!!!");
   }
 }
 
-
-/***************************************************
-    Name:        enterSleep
-
-    Returns:     Nothing.
-
-    Parameters:  None.
-
-    Description: Enters the arduino into sleep mode.
-
- ***************************************************/
-void enterSleep(void)
+void setup() 
 {
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);   /* EDIT: could also use SLEEP_MODE_PWR_DOWN for lowest power consumption. */
-  sleep_enable();
-
-  /* Now enter sleep mode. */
-  sleep_mode();
-
-  /* The program will continue from here after the WDT timeout*/
-  sleep_disable(); /* First thing to do is disable sleep. */
-
-  /* Re-enable the peripherals. */
-  power_all_enable();
-}
-
-
-
-/***************************************************
-    Name:        setup
-
-    Returns:     Nothing.
-
-    Parameters:  None.
-
-    Description: Setup for the serial comms and the
-                  Watch dog timeout.
-
- ***************************************************/
-void setup()
-{
-  Serial.begin(9600);
-  Serial.println("Initialising...");
-  delay(100); //Allow for serial print to complete.
-
+  pinMode (GREEN_LED, OUTPUT);
+  pinMode (AWAKE_LED, OUTPUT);
+  //digitalWrite (AWAKE_LED, HIGH);
+  Serial.begin (9600);
   pinMode(LED_PIN, OUTPUT);
   pinMode(SOIL_MOISTURE, INPUT);
   pinMode(PUMP_SWITCH, OUTPUT);
-  /*** Setup the WDT ***/
+    /*** Setup the WDT ***/
 
   /* Clear the reset flag. */
   MCUSR &= ~(1 << WDRF);
@@ -100,45 +63,70 @@ void setup()
 
   /* Enable the WD interrupt (note no reset). */
   WDTCSR |= _BV(WDIE);
+} // end of setup
 
-  Serial.println("Initialisation complete.");
-  delay(100); //Allow for serial print to complete.
-}
+unsigned long lastSleep;
 
-
-
-/***************************************************
-    Name:        enterSleep
-
-    Returns:     Nothing.
-
-    Parameters:  None.
-
-    Description: Main application loop.
-
- ***************************************************/
-void loop()
+void loop() 
 {
-  if (f_wdt == 1)
+  if (millis () - lastSleep >= WAIT_TIME)
   {
-    /* Toggle the LED */
-    int soil_moisture_value = analogRead(SOIL_MOISTURE);
-    Serial.println("soil_moisture_value"); 
-    Serial.println(soil_moisture_value);
-    if (soil_moisture_value >= 900) { //表示土壤太干,需要浇水
-      digitalWrite(LED_PIN, HIGH);
-      digitalWrite(PUMP_SWITCH, HIGH);
-      delay(10 * 1000); //睡眠5秒
-      digitalWrite(PUMP_SWITCH, LOW);
-    }
-    /* Don't forget to clear the flag. */
     f_wdt = 0;
-    digitalWrite(LED_PIN, LOW);
-    /* Re-enter sleep mode. */
-    enterSleep();
-  }
-  else
+    lastSleep = millis ();
+
+    noInterrupts ();
+
+    byte old_ADCSRA = ADCSRA;
+    // disable ADC
+    ADCSRA = 0;  
+    // pin change interrupt (example for D0)
+    PCMSK2 |= bit (PCINT16); // want pin 0
+    PCIFR  |= bit (PCIF2);   // clear any outstanding interrupts
+    PCICR  |= bit (PCIE2);   // enable pin change interrupts for D0 to D7
+
+    set_sleep_mode (SLEEP_MODE_PWR_DOWN);  
+    power_adc_disable();
+    power_spi_disable();
+    power_timer0_disable();
+    power_timer1_disable();
+    power_timer2_disable();
+    power_twi_disable();
+
+    UCSR0B &= ~bit (RXEN0);  // disable receiver
+    UCSR0B &= ~bit (TXEN0);  // disable transmitter
+
+    sleep_enable();
+    digitalWrite (AWAKE_LED, LOW);
+    interrupts ();
+    sleep_cpu ();      
+    digitalWrite (AWAKE_LED, HIGH);
+    sleep_disable();
+    power_all_enable();
+
+    ADCSRA = old_ADCSRA;
+    PCICR  &= ~bit (PCIE2);   // disable pin change interrupts for D0 to D7
+    UCSR0B |= bit (RXEN0);  // enable receiver
+    UCSR0B |= bit (TXEN0);  // enable transmitter
+  }  // end of time to sleep
+  if (Serial.available () > 0)  //server通过UART唤醒设备的
   {
-    /* Do nothing. */
-  }
-}
+    Serial.println("WDT Overrun!!!");
+    byte flashes = Serial.read () - '0';
+    if (flashes > 0 && flashes < 10)
+      {
+      // flash LED x times 
+      for (byte i = 0; i < flashes; i++)
+        {
+        digitalWrite (GREEN_LED, HIGH);
+        delay (200);  
+        digitalWrite (GREEN_LED, LOW);
+        delay (200);  
+        }
+      }        
+  }  // end of if
+  else if(1 == f_wdt) {
+      Serial.println("WTD wakeup");
+      f_wdt = 0;
+    }
+}  // end of loop
+
